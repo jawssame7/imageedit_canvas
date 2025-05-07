@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>プロフィールカードジェネレーター (Canvas - 画像オーバーレイ)</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-around;
+        align-items: flex-start;
+        margin: 20px;
+        background-color: #f4f4f4;
+      }
+      .controls {
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        width: 320px;
+        margin-bottom: 20px;
+      }
+      .controls div {
+        margin-bottom: 15px;
+      }
+      .controls label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+      .controls input[type='text'],
+      .controls textarea,
+      .controls select,
+      .controls input[type='color'] {
+        width: 100%;
+        padding: 8px;
+        box-sizing: border-box;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      .controls textarea {
+        resize: vertical;
+        min-height: 80px;
+      }
+      .preview-area {
+        margin-left: 20px;
+      }
+      #profileCardCanvas {
+        border: 1px solid #ccc;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      small {
+        font-size: 0.8em;
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <h2>プロフィール入力</h2>
+      <div>
+        <label for="name">名前:</label>
+        <input type="text" id="name" value="ななしのさん" />
+      </div>
+      <div>
+        <label for="bio">有効期限:</label>
+        <textarea id="bio">無期限</textarea>
+      </div>
+      <div>
+        <label for="overlayImageSelect">オーバーレイ画像:</label>
+        <select id="overlayImageSelect">
+          <option value="image1">イメージ1</option>
+          <option value="image2">イメージ2</option>
+          <option value="none">画像なし</option>
+        </select>
+      </div>
+      <div>
+        <label for="textColor">文字色:</label>
+        <input type="color" id="textColor" value="#000000" />
+      </div>
+      <div>
+        <label for="baseImageUrl">ベース画像URL (任意):</label>
+        <input
+          type="text"
+          id="baseImageUrl"
+          value="http://127.0.0.1:5500/baseimages/base_image.png"
+        />
+        <small>ここに画像のURLを入力。空だと背景色を使用。</small>
+      </div>
+      <div>
+        <label for="bgColor">背景色 (画像がない場合):</label>
+        <input type="color" id="bgColor" value="#777777" />
+      </div>
+    </div>
+
+    <div class="preview-area">
+      <h2>プレビュー</h2>
+      <canvas id="profileCardCanvas" width="400" height="300"></canvas>
+    </div>
+
+    <script>
+      // --- DOM要素の取得 ---
+      const canvas = document.getElementById('profileCardCanvas');
+      const ctx = canvas.getContext('2d');
+
+      const nameInput = document.getElementById('name');
+      const bioInput = document.getElementById('bio');
+      const overlayImageSelect = document.getElementById('overlayImageSelect'); // ID変更
+      const textColorInput = document.getElementById('textColor');
+      const baseImageUrlInput = document.getElementById('baseImageUrl');
+      const bgColorInput = document.getElementById('bgColor');
+
+      // --- 初期値 ---
+      let currentName = nameInput.value;
+      let currentBio = bioInput.value;
+      let currentOverlayImageKey = overlayImageSelect.value;
+      let currentTextColor = textColorInput.value;
+      let currentBgColor = bgColorInput.value;
+
+      // --- ベース画像の準備 ---
+      const baseImage = new Image();
+      baseImage.crossOrigin = 'anonymous';
+      baseImage.onload = function () {
+        console.log('ベース画像が読み込まれました。');
+        drawProfileCard();
+      };
+      baseImage.onerror = function () {
+        console.error('ベース画像の読み込みに失敗しました。');
+        drawProfileCard();
+      };
+
+      function loadBaseImage() {
+        const imageUrl = baseImageUrlInput.value.trim();
+        if (imageUrl) {
+          baseImage.src = imageUrl;
+        } else {
+          if (baseImage.src !== '') {
+            baseImage.src = '';
+            console.log('ベース画像URLが空です。背景色を使用します。');
+          }
+          drawProfileCard();
+        }
+      }
+
+      // --- オーバーレイ画像の定義と管理 ---
+      const overlayImageOptions = {
+        image1: {
+          src: 'http://127.0.0.1:5500/baseimages/image1.png', // 仮のURL
+          imageElement: new Image(),
+          isLoaded: false,
+        },
+        image2: {
+          src: 'http://127.0.0.1:5500/baseimages/image2.jpg', // 仮のURL
+          imageElement: new Image(),
+          isLoaded: false,
+        },
+        none: {
+          // 画像なしの場合
+          src: '',
+          imageElement: null,
+          isLoaded: true, // 何も描画しないのでロード済み扱い
+        },
+      };
+
+      function loadSelectedOverlayImage() {
+        const selectedOption = overlayImageOptions[currentOverlayImageKey];
+        if (selectedOption && selectedOption.src && !selectedOption.isLoaded) {
+          selectedOption.imageElement.crossOrigin = 'anonymous'; // CORS対策
+          selectedOption.imageElement.src = selectedOption.src;
+          selectedOption.imageElement.onload = () => {
+            selectedOption.isLoaded = true;
+            console.log(
+              `${currentOverlayImageKey} のオーバーレイ画像が読み込まれました。`
+            );
+            drawProfileCard();
+          };
+          selectedOption.imageElement.onerror = () => {
+            console.error(
+              `${currentOverlayImageKey} のオーバーレイ画像の読み込みに失敗しました。`
+            );
+            // isLoaded は false のままなので描画されない
+            drawProfileCard();
+          };
+        } else {
+          // 既にロード済みか、srcがない場合は再描画だけ行う
+          drawProfileCard();
+        }
+      }
+
+      // 初期ロード時に全てのオーバーレイ画像の読み込みを開始（オプション）
+      // または、選択時に都度読み込み（現在の実装）
+      // 事前ロードする場合：
+      // Object.values(overlayImageOptions).forEach(option => {
+      //     if (option.src) {
+      //         option.imageElement.crossOrigin = "anonymous";
+      //         option.imageElement.src = option.src;
+      //         option.imageElement.onload = () => { option.isLoaded = true; };
+      //     }
+      // });
+
+      // --- Canvas描画関数 ---
+      function drawProfileCard() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // ベース画像描画
+        if (
+          baseImage.complete &&
+          baseImage.naturalWidth !== 0 &&
+          baseImage.src &&
+          !baseImage.src.endsWith('#')
+        ) {
+          try {
+            ctx.drawImage(baseImage, 0, 0, canvas.width, canvas.height);
+          } catch (e) {
+            console.error('ベース画像のdrawImageでエラー:', e);
+            ctx.fillStyle = currentBgColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+          }
+        } else {
+          ctx.fillStyle = currentBgColor;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // オーバーレイ画像描画
+        const selectedOverlay = overlayImageOptions[currentOverlayImageKey];
+        if (
+          selectedOverlay &&
+          selectedOverlay.isLoaded &&
+          selectedOverlay.imageElement
+        ) {
+          const imgToDraw = selectedOverlay.imageElement;
+          const overlayX = 160; // 位置を調整
+          const overlayY = 90; // 位置を調整
+          const overlayWidth = 80; // 表示サイズ
+          const overlayHeight = 80; // 表示サイズ
+          try {
+            ctx.drawImage(
+              imgToDraw,
+              overlayX,
+              overlayY,
+              overlayWidth,
+              overlayHeight
+            );
+          } catch (e) {
+            console.error('オーバーレイ画像のdrawImageでエラー:', e);
+          }
+        } else if (
+          selectedOverlay &&
+          selectedOverlay.src &&
+          !selectedOverlay.isLoaded
+        ) {
+          // 読み込み中やエラー時の表示（任意）
+          ctx.fillStyle = 'rgba(200, 200, 200, 0.7)';
+          ctx.font = '12px Meiryo, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('画像読込中...', 30 + 40, 70 + 40);
+          ctx.textAlign = 'left'; //textAlignを戻す
+        }
+
+        // テキスト描画
+        ctx.fillStyle = currentTextColor;
+        // ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+        // ctx.shadowBlur = 4;
+        // ctx.shadowOffsetX = 2;
+        // ctx.shadowOffsetY = 2;
+
+        ctx.font = 'bold 24px Meiryo, sans-serif';
+        ctx.textAlign = 'left';
+        const nameX = 155;
+        const nameY = 55;
+        ctx.fillText(currentName, nameX, nameY);
+
+        ctx.font = '16px Meiryo, sans-serif';
+        const bioX = 95;
+        let bioY = canvas.height - 55; // 下からの開始位置
+        const bioLineWidth = canvas.width - bioX * 2;
+        const lineHeight = 20;
+
+        const lines = currentBio.trim().split('\n').reverse(); // 下から描画するため逆順
+        for (const line of lines) {
+          // 簡単な折り返し処理 (行全体を一度に描画)
+          // measureTextで幅を確認し、超える場合は分割する必要があるが、ここでは省略
+          ctx.fillText(line, bioX, bioY);
+          bioY -= lineHeight;
+          if (bioY < nameY + 30) break; // 名前と重ならないように
+        }
+
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      }
+
+      // --- イベントリスナー ---
+      function updateAndRedraw() {
+        currentName = nameInput.value;
+        currentBio = bioInput.value;
+        // currentOverlayColor = overlayColorInput.value; // 削除
+        currentTextColor = textColorInput.value;
+        currentBgColor = bgColorInput.value;
+        drawProfileCard(); // オーバーレイ画像の選択変更は別で処理
+      }
+
+      nameInput.addEventListener('input', updateAndRedraw);
+      bioInput.addEventListener('input', updateAndRedraw);
+      // overlayColorInput.addEventListener('input', updateAndRedraw); // 削除
+      textColorInput.addEventListener('input', updateAndRedraw);
+      bgColorInput.addEventListener('input', updateAndRedraw);
+      baseImageUrlInput.addEventListener('change', loadBaseImage);
+
+      overlayImageSelect.addEventListener('change', function () {
+        currentOverlayImageKey = this.value;
+        loadSelectedOverlayImage(); // 選択されたオーバーレイ画像を読み込み開始
+      });
+
+      // --- 初期読み込みと描画 ---
+      loadBaseImage(); // ベース画像の初期読み込み
+      loadSelectedOverlayImage(); // 選択されているオーバーレイ画像の初期読み込み
+    </script>
+  </body>
+</html>
