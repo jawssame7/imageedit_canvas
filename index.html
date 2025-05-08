@@ -98,6 +98,63 @@
     <div class="preview-area">
       <h2>プレビュー</h2>
       <canvas id="profileCardCanvas" width="400" height="300"></canvas>
+      <div style="margin-top: 10px; display: flex; gap: 10px">
+        <button
+          id="downloadButton"
+          style="
+            padding: 8px 16px;
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+          "
+        >
+          画像をダウンロード
+        </button>
+        <button
+          id="saveToS3Button"
+          style="
+            padding: 8px 16px;
+            background-color: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+          "
+        >
+          S3に保存
+        </button>
+      </div>
+      <div id="saveStatus" style="margin-top: 10px; font-size: 14px"></div>
+      <div
+        id="savedImageInfo"
+        style="margin-top: 10px; font-size: 14px; display: none"
+      >
+        <p>保存された画像:</p>
+        <a
+          id="savedImageLink"
+          href="#"
+          target="_blank"
+          style="color: #2196f3; text-decoration: none"
+          >画像を開く</a
+        >
+        <button
+          id="downloadSavedButton"
+          style="
+            margin-left: 10px;
+            padding: 4px 8px;
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+          "
+        >
+          保存された画像をダウンロード
+        </button>
+      </div>
     </div>
 
     <script>
@@ -297,15 +354,121 @@
       function updateAndRedraw() {
         currentName = nameInput.value;
         currentBio = bioInput.value;
-        // currentOverlayColor = overlayColorInput.value; // 削除
         currentTextColor = textColorInput.value;
         currentBgColor = bgColorInput.value;
-        drawProfileCard(); // オーバーレイ画像の選択変更は別で処理
+        drawProfileCard();
       }
+
+      // 署名付きURLから画像をダウンロード
+      const downloadImage = async (signedUrl) => {
+        const response = await fetch(signedUrl);
+        const blob = await response.blob();
+        return blob;
+      };
+
+      // SNSにアップロード
+      const uploadToSNS = async (imageBlob) => {
+        // SNSのAPIを使用してアップロード
+        // 例：Twitter API, Facebook APIなど
+        console.log('アップロード中...');
+        console.log(imageBlob);
+        console.log(imageBlob.size);
+        console.log(imageBlob.type);
+        console.log(imageBlob.name);
+        console.log(imageBlob.lastModified);
+        console.log(imageBlob.lastModifiedDate);
+        console.log(imageBlob.webkitRelativePath);
+        console.log(imageBlob.webkitRelativePath);
+        console.log(imageBlob.lastModified);
+        console.log(imageBlob.lastModifiedDate);
+        console.log(imageBlob.webkitRelativePath);
+        console.log(imageBlob.webkitRelativePath);
+        console.log(imageBlob.lastModified);
+        console.log(imageBlob.lastModifiedDate);
+        console.log(imageBlob.webkitRelativePath);
+        // 一旦ダウンロード
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(imageBlob);
+        link.download = 'profile-card.png';
+        link.click();
+      };
+
+      // ダウンロード機能の実装
+      document
+        .getElementById('downloadButton')
+        .addEventListener('click', function () {
+          const link = document.createElement('a');
+          link.download = 'profile-card.png';
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+        });
+
+      // S3保存機能の実装
+      document
+        .getElementById('saveToS3Button')
+        .addEventListener('click', async function () {
+          const statusDiv = document.getElementById('saveStatus');
+          const savedImageInfo = document.getElementById('savedImageInfo');
+          statusDiv.textContent = '保存中...';
+          statusDiv.style.color = '#666';
+          savedImageInfo.style.display = 'none';
+
+          try {
+            const imageData = canvas.toDataURL('image/png').split(',')[1];
+
+            const apiEndpoint = 'xxxxxxxxxxxxxxxxx';
+
+            const response = await fetch(apiEndpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                imageData: imageData,
+                fileName: `profile-card-${Date.now()}.png`,
+                metadata: {
+                  name: currentName,
+                  bio: currentBio,
+                  createdAt: new Date().toISOString(),
+                },
+              }),
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.message || '保存に失敗しました');
+            }
+
+            const result = await response.json();
+            statusDiv.textContent = '保存が完了しました！';
+            statusDiv.style.color = '#4CAF50';
+
+            // 保存された画像の情報を表示
+            const savedImageLink = document.getElementById('savedImageLink');
+            savedImageLink.href = result.imageUrl;
+            savedImageInfo.style.display = 'block';
+
+            // 保存された画像のダウンロードボタンのイベントリスナー
+            document.getElementById('downloadSavedButton').onclick =
+              async function () {
+                // const link = document.createElement('a');
+                // link.href = result.imageUrl;
+                // link.download = result.fileName || 'saved-profile-card.png';
+                // link.click();
+
+                const imageBlob = await downloadImage(result.imageUrl);
+                await uploadToSNS(imageBlob);
+              };
+          } catch (error) {
+            console.error('保存エラー:', error);
+            statusDiv.textContent =
+              '保存に失敗しました。もう一度お試しください。';
+            statusDiv.style.color = '#f44336';
+          }
+        });
 
       nameInput.addEventListener('input', updateAndRedraw);
       bioInput.addEventListener('input', updateAndRedraw);
-      // overlayColorInput.addEventListener('input', updateAndRedraw); // 削除
       textColorInput.addEventListener('input', updateAndRedraw);
       bgColorInput.addEventListener('input', updateAndRedraw);
       baseImageUrlInput.addEventListener('change', loadBaseImage);
